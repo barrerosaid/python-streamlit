@@ -1,38 +1,64 @@
 import streamlit as st
-import openai
-import os
 from llm_client import LLMClient
 
-# Load OpenAI key from secrets or env
-openai.api_key = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
+# Initialize LLM client
+llm_client = LLMClient()
 
-st.title("🤖 The Prompt Wrangler")
-st.caption("LLM Tuning Playground for Clinical Notes")
+st.title("🧠 The Prompt Wrangler")
 
-# Prompt input
-system_prompt = st.text_area("🔧 System Prompt", value="You are a medical data assistant. Extract structured JSON from clinical notes. Output only JSON.")
-user_prompt_template = st.text_area("💬 User Prompt Template", value="Please extract structured data from the following note:\n\n{{input_text}}")
+# Text inputs
+system_prompt = st.text_area("System Prompt", value=(
+    "You are an AI assistant that extracts structured data from clinical notes and returns JSON. "
+    "Return only JSON and include only fields present in the note."
+))
 
-# Clinical note
-input_text = st.text_area("📄 Clinical Note", height=150)
+input_text = st.text_area("Clinical Note Input", height=150)
 
-# Parameters
-col1, col2 = st.columns(2)
-temperature = col1.slider("Temperature", 0.0, 1.0, 0.5)
-max_tokens = col2.slider("Max Tokens", 100, 2048, 512)
+# Model parameters
+#temperature = st.slider("Temperature", 0.0, 1.0, 0.2, step=0.05)
+#max_tokens = st.slider("Max Tokens", 50, 1000, 500, step=50)
+temperature = st.sidebar.slider(
+    "Temperature",
+    min_value=0.0,
+    max_value=1.0,
+    value=0.2,
+    step=0.05,
+    help="Controls randomness. Lower = more focused, higher = more creative."
+)
 
-# Run button
-if st.button("🚀 Run LLM"):
-    if "{{input_text}}" not in user_prompt_template:
-        st.error("Please include {{input_text}} in your user prompt.")
+max_tokens = st.sidebar.number_input(
+    "Max Tokens",
+    min_value=10,
+    max_value=2000,
+    value=500,
+    step=50,
+    help="Limits the length of the response."
+)
+
+# Submit button
+if st.button("💬 Generate"):
+    if not input_text.strip():
+        st.warning("Please enter a clinical note.")
     else:
-        final_user_prompt = user_prompt_template.replace("{{input_text}}", input_text)
-        client = LLMClient()
-        output, metrics = client.call_llm(system_prompt, final_user_prompt, temperature, max_tokens)
+        # Automatically generate user prompt from template
+        user_prompt = f"Extract structured JSON from the following clinical note:\n\n{input_text}"
 
-        st.subheader("🧾 Output")
-        st.code(output, language="json" if output.strip().startswith("{") else "text")
+        # Call LLM
+        response_text, meta = llm_client.call_llm(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
 
-        if metrics:
-            st.subheader("📊 Metrics")
-            st.write(metrics)
+        # Display result
+        st.subheader("📤 Structured Output")
+        st.code(response_text, language="json")
+
+        # Meta info
+        if meta:
+            st.markdown("---")
+            st.text(f"⏱️ Response Time: {meta.get('response_time', 'N/A')}s")
+            st.text(f"🔢 Tokens Used: {meta.get('total_tokens', 'N/A')}")
+            st.sidebar.header("LLM Settings")
+
